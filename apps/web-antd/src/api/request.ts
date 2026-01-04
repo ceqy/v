@@ -50,10 +50,22 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
    */
   async function doRefreshToken() {
     const accessStore = useAccessStore();
-    const resp = await refreshTokenApi();
-    const newToken = resp.data;
-    accessStore.setAccessToken(newToken);
-    return newToken;
+    const authStore = useAuthStore();
+
+    // 从 authStore 获取 refresh token
+    const refreshToken = authStore.refreshToken;
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const resp = await refreshTokenApi(refreshToken);
+    const newAccessToken = resp.access_token;
+    const newRefreshToken = resp.refresh_token;
+
+    accessStore.setAccessToken(newAccessToken);
+    authStore.setRefreshToken(newRefreshToken);
+
+    return newAccessToken;
   }
 
   function formatToken(token: null | string) {

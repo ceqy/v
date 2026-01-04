@@ -25,6 +25,11 @@ async function generateAccess(options: GenerateMenuAndRoutesOptions) {
   return await generateAccessible(preferences.app.accessMode, {
     ...options,
     fetchMenuListAsync: async () => {
+      // 前端路由模式，不需要从后端获取菜单
+      if (preferences.app.accessMode === 'frontend') {
+        return [];
+      }
+
       message.loading({
         content: `${$t('common.loadingMenu')}...`,
         duration: 1.5,

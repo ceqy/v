@@ -19,6 +19,8 @@ export const useAuthStore = defineStore('auth', () => {
   const router = useRouter();
 
   const loginLoading = ref(false);
+  const refreshToken = ref<null | string>(null);
+  const userId = ref<null | string>(null);
 
   /**
    * 异步处理登录操作
@@ -33,22 +35,39 @@ export const useAuthStore = defineStore('auth', () => {
     let userInfo: null | UserInfo = null;
     try {
       loginLoading.value = true;
-      const { accessToken } = await loginApi(params);
+      const loginResult = await loginApi(params);
 
       // 如果成功获取到 accessToken
-      if (accessToken) {
-        accessStore.setAccessToken(accessToken);
+      if (loginResult.access_token) {
+        accessStore.setAccessToken(loginResult.access_token);
+        refreshToken.value = loginResult.refresh_token;
+        userId.value = loginResult.user_id;
 
         // 获取用户信息并存储到 accessStore 中
-        const [fetchUserInfoResult, accessCodes] = await Promise.all([
-          fetchUserInfo(),
-          getAccessCodesApi(),
-        ]);
+        try {
+          const [fetchUserInfoResult, accessCodes] = await Promise.all([
+            fetchUserInfo(),
+            getAccessCodesApi().catch((error) => {
+              console.warn('获取权限码失败，使用空数组:', error);
+              return [];
+            }),
+          ]);
 
-        userInfo = fetchUserInfoResult;
+          userInfo = fetchUserInfoResult;
 
-        userStore.setUserInfo(userInfo);
-        accessStore.setAccessCodes(accessCodes);
+          userStore.setUserInfo(userInfo);
+          accessStore.setAccessCodes(accessCodes);
+        } catch (error) {
+          console.error('获取用户信息失败:', error);
+          // 即使获取用户信息失败，也使用登录响应中的基本信息
+          userInfo = {
+            userId: loginResult.user_id,
+            username: loginResult.display_name,
+            realName: loginResult.display_name,
+          } as UserInfo;
+          userStore.setUserInfo(userInfo);
+          accessStore.setAccessCodes([]);
+        }
 
         if (accessStore.loginExpired) {
           accessStore.setLoginExpired(false);
@@ -56,13 +75,13 @@ export const useAuthStore = defineStore('auth', () => {
           onSuccess
             ? await onSuccess?.()
             : await router.push(
-                userInfo.homePath || preferences.app.defaultHomePath,
+                userInfo?.homePath || preferences.app.defaultHomePath,
               );
         }
 
-        if (userInfo?.realName) {
+        if (userInfo?.realName || loginResult.display_name) {
           notification.success({
-            description: `${$t('authentication.loginSuccessDesc')}:${userInfo?.realName}`,
+            description: `${$t('authentication.loginSuccessDesc')}:${userInfo?.realName || loginResult.display_name}`,
             duration: 3,
             message: $t('authentication.loginSuccess'),
           });
@@ -79,12 +98,17 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout(redirect: boolean = true) {
     try {
-      await logoutApi();
+      const token = accessStore.accessToken;
+      if (token) {
+        await logoutApi(token);
+      }
     } catch {
       // 不做任何处理
     }
     resetAllStores();
     accessStore.setLoginExpired(false);
+    refreshToken.value = null;
+    userId.value = null;
 
     // 回登录页带上当前路由地址
     await router.replace({
@@ -99,13 +123,21 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchUserInfo() {
     let userInfo: null | UserInfo = null;
-    userInfo = await getUserInfoApi();
-    userStore.setUserInfo(userInfo);
+    if (userId.value) {
+      userInfo = await getUserInfoApi(userId.value);
+      userStore.setUserInfo(userInfo);
+    }
     return userInfo;
+  }
+
+  function setRefreshToken(token: null | string) {
+    refreshToken.value = token;
   }
 
   function $reset() {
     loginLoading.value = false;
+    refreshToken.value = null;
+    userId.value = null;
   }
 
   return {
@@ -114,5 +146,8 @@ export const useAuthStore = defineStore('auth', () => {
     fetchUserInfo,
     loginLoading,
     logout,
+    refreshToken,
+    setRefreshToken,
+    userId,
   };
 });
