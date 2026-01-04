@@ -1,0 +1,14 @@
+# default owner
+* your-email@example.com
+
+# core owner
+/.github/ your-email@example.com
+/.vscode/ your-email@example.com
+/packages/ your-email@example.com
+/packages/@core/ your-email@example.com
+/internal/ your-email@example.com
+/scripts/ your-email@example.com
+
+# team owner
+apps/ your-email@example.com
+docs/ your-email@example.com
