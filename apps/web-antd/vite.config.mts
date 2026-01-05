@@ -8,9 +8,10 @@ export default defineConfig(async () => {
         proxy: {
           '/api': {
             changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api/, ''),
-            // mock代理目标地址
-            target: 'http://localhost:5320/api',
+            // 不需要 rewrite，因为 Cuba ERP Gateway 就是 /api 路径
+            // rewrite: (path) => path.replace(/^\/api/, ''),
+            // Cuba ERP API Gateway 地址
+            target: 'http://localhost:8082',
             ws: true,
           },
         },

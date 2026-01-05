@@ -33,19 +33,33 @@ export const useAuthStore = defineStore('auth', () => {
     let userInfo: null | UserInfo = null;
     try {
       loginLoading.value = true;
-      const { accessToken } = await loginApi(params);
+      // Cuba ERP 登录接口返回 access_token, refresh_token 和 user 信息
+      const loginResult = await loginApi(params);
 
-      // 如果成功获取到 accessToken
-      if (accessToken) {
-        accessStore.setAccessToken(accessToken);
+      // 如果成功获取到 access_token
+      if (loginResult.access_token) {
+        accessStore.setAccessToken(loginResult.access_token);
 
-        // 获取用户信息并存储到 accessStore 中
-        const [fetchUserInfoResult, accessCodes] = await Promise.all([
-          fetchUserInfo(),
-          getAccessCodesApi(),
-        ]);
+        // 保存 refresh_token 到 localStorage
+        if (loginResult.refresh_token) {
+          localStorage.setItem('refresh_token', loginResult.refresh_token);
+        }
 
-        userInfo = fetchUserInfoResult;
+        // Cuba ERP 登录接口直接返回用户信息，不需要再次请求
+        const cubaUser = loginResult.user;
+        userInfo = {
+          userId: cubaUser.user_id,
+          username: cubaUser.username,
+          realName: cubaUser.display_name || cubaUser.username,
+          roles: cubaUser.roles || [],
+          // Vben Admin 必需字段
+          desc: cubaUser.email || '',
+          homePath: '/dashboard', // 设置默认首页
+          token: loginResult.access_token,
+        };
+
+        // 获取权限码（当前返回空数组）
+        const accessCodes = await getAccessCodesApi();
 
         userStore.setUserInfo(userInfo);
         accessStore.setAccessCodes(accessCodes);
@@ -68,6 +82,9 @@ export const useAuthStore = defineStore('auth', () => {
           });
         }
       }
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      throw error;
     } finally {
       loginLoading.value = false;
     }
@@ -79,10 +96,16 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout(redirect: boolean = true) {
     try {
-      await logoutApi();
+      // Cuba ERP 需要传递 access_token
+      const accessToken = accessStore.accessToken;
+      if (accessToken) {
+        await logoutApi(accessToken);
+      }
     } catch {
       // 不做任何处理
     }
+    // 清除 refresh_token
+    localStorage.removeItem('refresh_token');
     resetAllStores();
     accessStore.setLoginExpired(false);
 
@@ -99,7 +122,23 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchUserInfo() {
     let userInfo: null | UserInfo = null;
-    userInfo = await getUserInfoApi();
+    // 获取 Cuba ERP 用户信息
+    const cubaUserInfo = await getUserInfoApi();
+
+    // 映射 Cuba ERP 数据到 Vben UserInfo 格式
+    userInfo = {
+      userId: cubaUserInfo.user_id || cubaUserInfo.userId,
+      username: cubaUserInfo.username,
+      realName:
+        cubaUserInfo.display_name ||
+        cubaUserInfo.realName ||
+        cubaUserInfo.username,
+      roles: cubaUserInfo.roles || [],
+      desc: cubaUserInfo.email || '',
+      homePath: '/dashboard',
+      token: accessStore.accessToken || '',
+    };
+
     userStore.setUserInfo(userInfo);
     return userInfo;
   }

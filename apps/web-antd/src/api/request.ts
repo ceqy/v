@@ -7,7 +7,6 @@ import { useAppConfig } from '@vben/hooks';
 import { preferences } from '@vben/preferences';
 import {
   authenticateResponseInterceptor,
-  defaultResponseInterceptor,
   errorMessageResponseInterceptor,
   RequestClient,
 } from '@vben/request';
@@ -20,6 +19,9 @@ import { useAuthStore } from '#/store';
 import { refreshTokenApi } from './core';
 
 const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
+
+// Token 刷新Promise，用于防止并发刷新
+let refreshTokenPromise: null | Promise<null | string> = null;
 
 function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   const client = new RequestClient({
@@ -46,14 +48,53 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   }
 
   /**
-   * 刷新token逻辑
+   * 刷新token逻辑 - Cuba ERP 格式
+   * 使用单例模式防止并发刷新
    */
   async function doRefreshToken() {
+    // 如果已经有刷新请求在进行中，直接返回该 Promise
+    if (refreshTokenPromise) {
+      return refreshTokenPromise;
+    }
+
     const accessStore = useAccessStore();
-    const resp = await refreshTokenApi();
-    const newToken = resp.data;
-    accessStore.setAccessToken(newToken);
-    return newToken;
+    const refreshToken = localStorage.getItem('refresh_token');
+
+    if (!refreshToken) {
+      // 如果没有 refresh_token，直接重新认证
+      await doReAuthenticate();
+      return null;
+    }
+
+    // 创建刷新 Promise
+    refreshTokenPromise = (async () => {
+      try {
+        const resp = await refreshTokenApi(refreshToken);
+        const newAccessToken = resp.access_token;
+        const newRefreshToken = resp.refresh_token;
+
+        // 更新 access token 到 store
+        accessStore.setAccessToken(newAccessToken);
+
+        // 更新 refresh token 到 localStorage
+        if (newRefreshToken) {
+          localStorage.setItem('refresh_token', newRefreshToken);
+        }
+
+        return newAccessToken;
+      } catch (error) {
+        // 刷新失败，清除 refresh_token 并重新认证
+        console.error('Token refresh failed:', error);
+        localStorage.removeItem('refresh_token');
+        await doReAuthenticate();
+        return null;
+      } finally {
+        // 清除刷新 Promise，允许下次刷新
+        refreshTokenPromise = null;
+      }
+    })();
+
+    return refreshTokenPromise;
   }
 
   function formatToken(token: null | string) {
@@ -72,13 +113,13 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
   });
 
   // 处理返回的响应数据格式
-  client.addResponseInterceptor(
-    defaultResponseInterceptor({
-      codeField: 'code',
-      dataField: 'data',
-      successCode: 0,
-    }),
-  );
+  // Cuba ERP 直接返回数据，不需要解包
+  client.addResponseInterceptor({
+    fulfilled: (response) => {
+      // 返回响应的 data 字段，Cuba ERP 的数据就在这里
+      return response.data;
+    },
+  });
 
   // token过期的处理
   client.addResponseInterceptor(
