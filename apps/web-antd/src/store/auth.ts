@@ -1,5 +1,7 @@
 import type { Recordable, UserInfo } from '@vben/types';
 
+import type { AuthApi } from '#/api';
+
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -35,37 +37,36 @@ export const useAuthStore = defineStore('auth', () => {
     let userInfo: null | UserInfo = null;
     try {
       loginLoading.value = true;
-      const loginResult = await loginApi(params);
+      const loginResult = await loginApi(params as AuthApi.LoginParams);
 
       // 如果成功获取到 accessToken
       if (loginResult.access_token) {
         accessStore.setAccessToken(loginResult.access_token);
         refreshToken.value = loginResult.refresh_token;
-        userId.value = loginResult.user_id;
+        userId.value = loginResult.user.user_id;
 
-        // 获取用户信息并存储到 accessStore 中
+        // 直接使用登录响应中的用户信息
+        userInfo = {
+          userId: loginResult.user.user_id,
+          username: loginResult.user.username,
+          realName: loginResult.user.display_name || loginResult.user.username,
+          homePath: '/analytics',
+          roles: loginResult.user.roles || [],
+          avatar:
+            loginResult.user.avatar_url ||
+            `https://api.dicebear.com/7.x/avataaars/svg?seed=${loginResult.user.email}`,
+          desc: loginResult.user.email,
+          token: loginResult.access_token,
+        };
+
+        userStore.setUserInfo(userInfo);
+
+        // 尝试获取权限码，但不阻塞登录流程
         try {
-          const [fetchUserInfoResult, accessCodes] = await Promise.all([
-            fetchUserInfo(),
-            getAccessCodesApi().catch((error) => {
-              console.warn('获取权限码失败，使用空数组:', error);
-              return [];
-            }),
-          ]);
-
-          userInfo = fetchUserInfoResult;
-
-          userStore.setUserInfo(userInfo);
+          const accessCodes = await getAccessCodesApi();
           accessStore.setAccessCodes(accessCodes);
         } catch (error) {
-          console.error('获取用户信息失败:', error);
-          // 即使获取用户信息失败，也使用登录响应中的基本信息
-          userInfo = {
-            userId: loginResult.user_id,
-            username: loginResult.display_name,
-            realName: loginResult.display_name,
-          } as UserInfo;
-          userStore.setUserInfo(userInfo);
+          console.warn('获取权限码失败，使用空数组:', error);
           accessStore.setAccessCodes([]);
         }
 
@@ -75,13 +76,17 @@ export const useAuthStore = defineStore('auth', () => {
           onSuccess
             ? await onSuccess?.()
             : await router.push(
-                userInfo?.homePath || preferences.app.defaultHomePath,
+                userInfo.homePath || preferences.app.defaultHomePath,
               );
         }
 
-        if (userInfo?.realName || loginResult.display_name) {
+        if (
+          userInfo.realName ||
+          loginResult.user.display_name ||
+          loginResult.user.username
+        ) {
           notification.success({
-            description: `${$t('authentication.loginSuccessDesc')}:${userInfo?.realName || loginResult.display_name}`,
+            description: `${$t('authentication.loginSuccessDesc')}:${userInfo.realName || loginResult.user.display_name || loginResult.user.username}`,
             duration: 3,
             message: $t('authentication.loginSuccess'),
           });
@@ -124,7 +129,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchUserInfo() {
     let userInfo: null | UserInfo = null;
     if (userId.value) {
-      userInfo = await getUserInfoApi(userId.value);
+      userInfo = await getUserInfoApi();
       userStore.setUserInfo(userInfo);
     }
     return userInfo;

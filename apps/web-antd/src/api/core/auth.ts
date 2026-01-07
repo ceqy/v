@@ -3,18 +3,36 @@ import { baseRequestClient } from '#/api/request';
 export namespace AuthApi {
   /** 登录接口参数 */
   export interface LoginParams {
-    email: string;
+    username: string;
     password: string;
+    tenantId?: string;
+  }
+
+  /** 用户信息(来自实际后端响应) */
+  export interface UserInfo {
+    tenant_id: string;
+    user_id: string;
+    username: string;
+    email: string;
+    display_name: string;
+    avatar_url: string;
+    email_verified: boolean;
+    is_active: boolean;
+    roles: string[];
+    created_at: string;
+    updated_at: string;
+    last_login_at: string;
   }
 
   /** 登录接口返回值 */
   export interface LoginResult {
     access_token: string;
     refresh_token: string;
-    token_type: string;
-    expires_in: number;
-    user_id: string;
-    display_name: string;
+    expires_in: string;
+    user: UserInfo;
+    requires_2fa: boolean;
+    account_locked: boolean;
+    temp_token: string;
   }
 
   export interface RefreshTokenParams {
@@ -38,20 +56,18 @@ export namespace AuthApi {
  */
 export async function loginApi(data: AuthApi.LoginParams) {
   // 使用 baseRequestClient 避免响应拦截器包装，后端直接返回数据
-  const response = await baseRequestClient.post<AuthApi.LoginResult>(
-    '/auth/login',
-    data,
-  );
-  return response.data;
+  const response: any = await baseRequestClient.post('/v1/auth/login', data);
+  return response.data as AuthApi.LoginResult;
 }
 
 /**
  * 刷新accessToken
  */
 export async function refreshTokenApi(refreshToken: string) {
-  return baseRequestClient.post<AuthApi.RefreshTokenResult>('/auth/refresh', {
+  const response: any = await baseRequestClient.post('/v1/auth/refresh', {
     refresh_token: refreshToken,
   });
+  return response.data as AuthApi.RefreshTokenResult;
 }
 
 /**

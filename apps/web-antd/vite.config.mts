@@ -8,8 +8,8 @@ export default defineConfig(async () => {
         proxy: {
           '/api': {
             changeOrigin: true,
-            // Gateway API 地址
-            target: 'http://localhost:8082',
+            // Auth Service 地址
+            target: 'http://localhost:8080',
             ws: true,
           },
         },

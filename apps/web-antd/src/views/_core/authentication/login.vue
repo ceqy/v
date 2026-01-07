@@ -17,14 +17,21 @@ const formSchema = computed((): VbenFormSchema[] => {
     {
       component: 'VbenInput',
       componentProps: {
-        placeholder: 'admin@example.com',
+        placeholder: 'T001',
       },
-      fieldName: 'email',
-      label: '邮箱',
-      rules: z
-        .string()
-        .min(1, { message: '请输入邮箱地址' })
-        .email({ message: '请输入有效的邮箱地址' }),
+      fieldName: 'tenantId',
+      label: '租户ID',
+      rules: z.string().optional(),
+      defaultValue: 'T001',
+    },
+    {
+      component: 'VbenInput',
+      componentProps: {
+        placeholder: $t('authentication.usernameTip'),
+      },
+      fieldName: 'username',
+      label: $t('authentication.username'),
+      rules: z.string().min(1, { message: $t('authentication.usernameTip') }),
     },
     {
       component: 'VbenInputPassword',
